@@ -2,38 +2,61 @@ import streamlit as st
 import joblib
 import numpy as np
 
-# 1. تحميل الموديلات
-model = joblib.load('amazon_svm_model.pkl')
-scaler = joblib.load('scaler.pkl')
-pca = joblib.load('pca_model.pkl')
+# 1. تحميل الموديلات المحدثة
+# تأكد أن هذه الملفات موجودة في نفس المستودع (Repository) على GitHub
+try:
+    model = joblib.load('amazon_svm_model.pkl')
+    scaler = joblib.load('scaler.pkl')
+    pca = joblib.load('pca_model.pkl')
+except Exception as e:
+    st.error(f"Error loading models: {e}. Please ensure .pkl files are uploaded to GitHub.")
 
-# 2. تصميم واجهة الموقع
+# 2. إعدادات الصفحة
+st.set_page_config(page_title="Amazon Sales Predictor", page_icon="🚀")
 st.title("🚀 Amazon Sales Performance Predictor")
-st.write("Enter product details to predict its market performance category.")
+st.write("This app uses a Balanced SVM model with PCA to predict product performance.")
 
-# 3. إنشاء خانات الإدخال
-price = st.number_input("Original Price", value=500.0)
-discount = st.slider("Discount Percentage (%)", 0, 100, 10)
-rating = st.slider("Customer Rating (1-5)", 1.0, 5.0, 4.0)
-quantity = st.number_input("Quantity Sold", value=100)
-category = st.selectbox("Product Category ID", [0, 1, 2, 3, 4, 5]) # بناءً على الـ Encoding بتاعك
+# 3. واجهة المدخلات (مرتبة حسب ميزات التدريب)
+col1, col2 = st.columns(2)
 
-# 4. زر التوقع
+with col1:
+    price = st.number_input("Original Price", min_value=0.0, value=500.0, step=10.0)
+    discount_percent = st.slider("Discount Percentage (%)", 0, 100, 25)
+    rating = st.slider("Customer Rating (1-5)", 1.0, 5.0, 4.5, step=0.1)
+
+with col2:
+    quantity_sold = st.number_input("Quantity Sold", min_value=0, value=1000, step=50)
+    # ملاحظة: تأكد من إدخال رقم الفئة الذي استخدمته في التدريب
+    category_encoded = st.number_input("Product Category ID", min_value=0, max_value=20, value=1)
+
+# 4. منطق التوقع
 if st.button("Predict Performance"):
-    # تجهيز البيانات
-    input_data = np.array([[price, discount, rating, quantity, category]])
+    # تجهيز المصفوفة بالترتيب الصحيح لـ Features
+    # Order: ['price', 'discount_percent', 'rating', 'quantity_sold', 'product_category_encoded']
+    input_features = np.array([[price, discount_percent, rating, quantity_sold, category_encoded]])
     
-    # التحويل (Preprocessing)
-    input_scaled = scaler.transform(input_data)
+    # تحويل البيانات باستخدام السكيلر والـ PCA المحدثين
+    input_scaled = scaler.transform(input_features)
     input_pca = pca.transform(input_scaled)
     
-    # التوقع
+    # إجراء التوقع
     prediction = model.predict(input_pca)[0]
     
-    # عرض النتيجة بشكل جمالي
-    if prediction == 'High':
-        st.success(f"Result: {prediction} Performance 🌟")
-    elif prediction == 'Medium':
-        st.warning(f"Result: {prediction} Performance 📊")
+    # عرض النتيجة بتنسيق لوني جذاب
+    st.markdown("---")
+    if prediction == 'High' or prediction == 0: # التعامل مع الاحتمالين (نص أو رقم)
+        st.success(f"### Result: High Performance 🌟")
+        st.balloons()
+    elif prediction == 'Medium' or prediction == 2:
+        st.warning(f"### Result: Medium Performance 📊")
     else:
-        st.error(f"Result: {prediction} Performance 📉")
+        st.error(f"### Result: Low Performance 📉")
+
+# 5. معلومات إضافية للدكتور
+with st.expander("Technical Details"):
+    st.write("""
+    - **Preprocessing:** Standard Scaler
+    - **Dimensionality Reduction:** Principal Component Analysis (PCA) - 2 Components
+    - **Model:** Support Vector Machine (SVM) with RBF Kernel
+    - **Optimization:** SMOTE (Synthetic Minority Over-sampling Technique) for class balancing.
+    """)
