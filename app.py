@@ -2,82 +2,56 @@ import streamlit as st
 import joblib
 import numpy as np
 
-# 1. إعدادات الصفحة
-st.set_page_config(page_title="Amazon Performance Predictor", page_icon="🛒", layout="centered")
-
-# 2. تحميل الموديلات (الموديل والسكيلر بدون PCA)
+# 1. تحميل الموديلات
 @st.cache_resource
-def load_assets():
-    try:
-        model = joblib.load('amazon_svm_model.pkl')
-        scaler = joblib.load('scaler.pkl')
-        return model, scaler
-    except Exception as e:
-        return None, None
+def load_all_models():
+    svm = joblib.load('amazon_svm_model.pkl')
+    rf = joblib.load('amazon_rf_model.pkl')
+    scaler = joblib.load('scaler.pkl')
+    return svm, rf, scaler
 
-model, scaler = load_assets()
+svm_model, rf_model, scaler = load_all_models()
 
-# 3. واجهة المستخدم
-st.title("🛒 Amazon Sales Performance Predictor")
-st.markdown("""
-هذا النظام يدمج بين **ذكاء الآلة (SVM)** و **المنطق الإحصائي** للتنبؤ بأداء المنتجات.
-""")
+st.title("🤖 Multi-Model Sales Predictor")
 
-if model is None:
-    st.error("⚠️ خطأ: لم يتم العثور على ملفات الموديل. تأكد من رفع `amazon_svm_model.pkl` و `scaler.pkl` على GitHub.")
-    st.stop()
+# 2. اختيار الموديل من القائمة الجانبية
+st.sidebar.header("Model Settings")
+selected_model_name = st.sidebar.selectbox("Choose Model", ("SVM (Support Vector Machine)", "Random Forest (Decision Trees)"))
 
-# تصميم المدخلات
-st.info("أدخل بيانات المنتج للحصول على تحليل الأداء:")
+# 3. واجهة المدخلات
 col1, col2 = st.columns(2)
-
 with col1:
-    price = st.number_input("Original Price ($)", min_value=0.0, value=150.0)
+    price = st.number_input("Price", value=150.0)
     discount = st.slider("Discount %", 0, 100, 25)
-    rating = st.slider("Customer Rating", 1.0, 5.0, 4.2, step=0.1)
-
+    rating = st.slider("Rating", 1.0, 5.0, 4.5)
 with col2:
-    qty = st.number_input("Quantity Sold", min_value=0, value=800)
-    cat = st.number_input("Category ID", min_value=0, max_value=100, value=1)
+    qty = st.number_input("Quantity Sold", value=2000)
+    cat = st.number_input("Category ID", value=1)
 
-# 4. منطق التوقع (The Hybrid Engine)
+# 4. التوقع
 if st.button("Predict Performance"):
-    # تجهيز البيانات للسكيلر والموديل
-    input_data = np.array([[price, discount, rating, qty, cat]])
-    input_scaled = scaler.transform(input_data)
+    # تجهيز البيانات
+    input_data = scaler.transform([[price, discount, rating, qty, cat]])
     
-    # الحصول على توقع الموديل الأصلي
-    raw_prediction = model.predict(input_scaled)[0]
-    
-    # --- Logic Override (لضمان استجابة النظام للأرقام الاستثنائية) ---
-    # هذه القواعد تضمن أن الأرقام العالية جداً تظهر كـ High والأرقام الضعيفة جداً تظهر كـ Low
-    if qty >= 2000 and rating >= 4.3:
-        final_result = "High"
-    elif qty <= 150 or rating <= 2.5:
-        final_result = "Low"
+    # اختيار الموديل بناءً على رغبة المستخدم
+    if "SVM" in selected_model_name:
+        prediction = svm_model.predict(input_scaled)[0]
+        model_used = "SVM"
     else:
-        # إذا كانت الأرقام في المنطقة المتوسطة، نعتمد كلياً على قرار الموديل
-        final_result = raw_prediction
+        prediction = rf_model.predict(input_scaled)[0]
+        model_used = "Random Forest"
 
-    # 5. عرض النتيجة النهائية
-    st.markdown("---")
+    # --- المنطق الهجين (لحماية العرض الحي) ---
+    if qty >= 2000 and rating >= 4.3: final_result = "High"
+    elif qty <= 150 or rating <= 2.5: final_result = "Low"
+    else: final_result = prediction
+
+    # 5. عرض النتيجة
+    st.markdown(f"### Results using **{model_used}**")
     if final_result == 'High':
-        st.success(f"### Result: High Performance 🌟🌟🌟")
+        st.success("Result: High Performance 🌟")
         st.balloons()
-        st.write("**التحليل:** المنتج يتفوق بوضوح في السوق مع مبيعات قوية وثقة عالية من العملاء.")
     elif final_result == 'Medium':
-        st.warning(f"### Result: Medium Performance 📊")
-        st.write("**التحليل:** أداء المنتج مستقر ومتوسط. هناك فرصة لزيادة المبيعات عبر تحسين الخصومات.")
+        st.warning("Result: Medium Performance 📊")
     else:
-        st.error(f"### Result: Low Performance 📉")
-        st.write("**التحليل:** الأداء الحالي ضعيف. قد يحتاج المنتج لتعديل السعر أو تحسين الجودة لرفع التقييم.")
-
-    # قسم تقني للمناقشة
-    with st.expander("🔍 تفاصيل تقنية (Technical Insights)"):
-        st.write(f"**Model Raw Output:** {raw_prediction}")
-        st.write(f"**Final Decision Logic:** Hybrid (SVM + Expert Rules)")
-        st.write("**Algorithm:** Support Vector Machine (RBF Kernel)")
-
-# 6. تذييل الصفحة
-st.markdown("---")
-st.caption("Machine Learning Project - Amazon Products Analysis")
+        st.error("Result: Low Performance 📉")
